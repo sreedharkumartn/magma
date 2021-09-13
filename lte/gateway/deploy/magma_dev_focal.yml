@@ -35,6 +35,11 @@
         distribution: "focal"
         repo: "dev-focal"
         config_dir: "lte/gateway/configs"
+    - role: golang
+      vars:
+        user: "{{ ansible_user }}"
+        golang_tar: go1.15.3.linux-amd64.tar.gz
+        golang_tar_checksum: 'sha256:010a88df924a81ec21b293b5da8f9b11c176d27c0ee3962dc1738d2352d3c02d'
     - role: dev_common
       vars:
         c_build: /home/{{ ansible_user }}/build/c
