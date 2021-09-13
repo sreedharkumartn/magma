@@ -17,6 +17,7 @@ aliases:
         only:
           - master
           - develop
+          - run-circleci
   - &lte_build_verify
     paths: "orc8r lte"
   - &c_cpp_build_verify
@@ -94,6 +95,7 @@ orbs:
           - run:
               name: Checking for changes
               command: |
+                exit 0
                 if [ "${CIRCLE_BRANCH}" = "master" ]; then
                   echo "Determinator does not run on master"
                   exit 0
