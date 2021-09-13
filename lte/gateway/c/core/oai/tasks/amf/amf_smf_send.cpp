@@ -646,7 +646,8 @@ int amf_send_n11_update_location_req(amf_ue_ngap_id_t ue_id) {
   }
 
   s6a_ulr_p = &message_p->ittiMsg.s6a_update_location_req;
-  memset((void*) s6a_ulr_p, 0, sizeof(s6a_update_location_req_t));
+
+  memset(s6a_ulr_p, 0, sizeof(s6a_update_location_req_t));
 
   IMSI64_TO_STRING(
       ue_context_p->amf_context.imsi64, s6a_ulr_p->imsi, IMSI_LENGTH);
@@ -656,7 +657,7 @@ int amf_send_n11_update_location_req(amf_ue_ngap_id_t ue_id) {
   plmn_t visited_plmn       = {0};
   COPY_PLMN(visited_plmn, ue_context_p->amf_context.originating_tai.plmn);
   memcpy(&s6a_ulr_p->visited_plmn, &visited_plmn, sizeof(plmn_t));
-  s6a_ulr_p->rat_type = RAT_UTRAN;
+  s6a_ulr_p->rat_type = RAT_NR;
 
   // Set regional_subscription flag
   s6a_ulr_p->supportedfeatures.regional_subscription = true;

@@ -503,7 +503,7 @@ int amf_handle_s6a_update_location_ans(
       ula_pP->subscription_data.subscribed_ambr.br_ul,
       ula_pP->subscription_data.subscribed_ambr.br_dl);
 
-  return 0;
+  OAILOG_FUNC_RETURN(LOG_NAS_AMF, RETURNok);
 }
 
 }  // namespace magma5g

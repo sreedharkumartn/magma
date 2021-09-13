@@ -177,9 +177,10 @@ typedef enum {
   RAT_HRPD           = 2001,
   RAT_UMB            = 2002,
   RAT_EHRPD          = 2003,
+  RAT_NR             = 2004,
 } rat_type_t;
 
-#define NUMBER_OF_RAT_TYPE 11
+#define NUMBER_OF_RAT_TYPE 12
 
 typedef enum {
   SS_SERVICE_GRANTED             = 0,
