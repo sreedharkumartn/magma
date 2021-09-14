@@ -634,7 +634,7 @@ int amf_send_n11_update_location_req(amf_ue_ngap_id_t ue_id) {
 
   if (ue_context_p) {
     OAILOG_INFO(
-        LOG_AMF_APP, "IMSI HANDLED =%u\n", ue_context_p->amf_context.imsi64);
+        LOG_AMF_APP, "IMSI HANDLED =%lu\n", ue_context_p->amf_context.imsi64);
   } else {
     OAILOG_ERROR(LOG_AMF_APP, "ue context not found for the ue_id=%u\n", ue_id);
     OAILOG_FUNC_RETURN(LOG_AMF_APP, rc);
@@ -657,7 +657,7 @@ int amf_send_n11_update_location_req(amf_ue_ngap_id_t ue_id) {
   plmn_t visited_plmn       = {0};
   COPY_PLMN(visited_plmn, ue_context_p->amf_context.originating_tai.plmn);
   memcpy(&s6a_ulr_p->visited_plmn, &visited_plmn, sizeof(plmn_t));
-  s6a_ulr_p->rat_type = RAT_NR;
+  s6a_ulr_p->rat_type = RAT_NG_RAN;
 
   // Set regional_subscription flag
   s6a_ulr_p->supportedfeatures.regional_subscription = true;

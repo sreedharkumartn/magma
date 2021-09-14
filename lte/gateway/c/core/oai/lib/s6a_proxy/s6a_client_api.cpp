@@ -34,7 +34,6 @@
 extern "C" {}
 
 extern task_zmq_ctx_t s6a_task_zmq_ctx;
-extern task_zmq_ctx_t grpc_service_task_zmq_ctx;
 
 using namespace magma;
 using namespace magma::feg;
@@ -162,8 +161,8 @@ static void s6a_handle_update_location_ans(
             << std::endl;
   IMSI_STRING_TO_IMSI64((char*) imsi.c_str(), &message_p->ittiMsgHeader.imsi);
 
-  if (rat_type == RAT_NR) {
-    send_msg_to_task(&grpc_service_task_zmq_ctx, TASK_AMF_APP, message_p);
+  if (rat_type == RAT_NG_RAN) {
+    send_msg_to_task(&s6a_task_zmq_ctx, TASK_AMF_APP, message_p);
   } else {
     send_msg_to_task(&s6a_task_zmq_ctx, TASK_MME_APP, message_p);
   }
