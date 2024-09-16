@@ -29,16 +29,22 @@
 #include <stdint.h>
 #include <czmq.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
+#include "lte/gateway/c/core/oai/lib/itti/intertask_interface.h"
+#ifdef __cplusplus
+}
+#endif
+
 #include "S1ap_Cause.h"
 #include "lte/gateway/c/core/common/common_defs.h"
 #include "lte/gateway/c/core/oai/common/common_types.h"
 #include "lte/gateway/c/core/oai/include/TrackingAreaIdentity.h"
+#include "lte/gateway/c/core/oai/include/s1ap_state.hpp"
 #include "lte/gateway/c/core/oai/lib/3gpp/3gpp_23.003.h"
 #include "lte/gateway/c/core/oai/lib/3gpp/3gpp_36.401.h"
-#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
-#include "lte/gateway/c/core/oai/lib/itti/intertask_interface.h"
-
-#include "lte/gateway/c/core/oai/include/s1ap_state.hpp"
 
 namespace magma {
 namespace lte {
@@ -59,7 +65,7 @@ status_code_e s1ap_mme_itti_nas_uplink_ind(const mme_ue_s1ap_id_t ue_id,
 status_code_e s1ap_mme_itti_nas_downlink_cnf(const mme_ue_s1ap_id_t ue_id,
                                              const bool is_success);
 
-void s1ap_mme_itti_s1ap_initial_ue_message(
+status_code_e s1ap_mme_itti_s1ap_initial_ue_message(
     const sctp_assoc_id_t assoc_id, const uint32_t enb_id,
     const enb_ue_s1ap_id_t enb_ue_s1ap_id, const uint8_t* const nas_msg,
     const size_t nas_msg_length, const tai_t* const tai,

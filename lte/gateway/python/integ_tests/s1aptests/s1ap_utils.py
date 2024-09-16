@@ -22,10 +22,12 @@ import threading
 import time
 from enum import Enum
 from queue import Empty, Queue
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import grpc
 import s1ap_types
+import yaml
+from integ_tests.common.magmad_client import MagmadServiceGrpc
 from integ_tests.gateway.rpc import get_rpc_channel
 from integ_tests.s1aptests.ovs.rest_api import (
     get_datapath,
@@ -89,12 +91,11 @@ class S1ApUtil(object):
     lib_name = "libtfw.so"
 
     _cond = threading.Condition()
-    _msg = Queue()
-    # Default maximum wait time is 60 sec (1 min)
-    MAX_RESP_WAIT_TIME = 60
+    _msg: Queue = Queue()
+    # Default maximum wait time is 180 sec (3 min)
+    MAX_RESP_WAIT_TIME = 180
 
     MAX_NUM_RETRIES = 5
-    datapath = get_datapath()
     SPGW_TABLE = 0
     LOCAL_PORT = "LOCAL"
     LOCAL_PORT_NON_NAT_IPV6 = 2
@@ -124,6 +125,8 @@ class S1ApUtil(object):
         """
         Initialize the s1aplibrary and its callbacks.
         """
+        self.datapath = get_datapath()
+
         # Clear the message queue to delete already stored response messages
         S1ApUtil._msg.queue.clear()
         self._imsi_idx = 1
@@ -202,14 +205,12 @@ class S1ApUtil(object):
 
     def get_response(
         self,
-        timeout: int = None,
-        assert_on_timeout: bool = True,
+        timeout: Optional[int] = None,
     ) -> Msg:
         """Return the response message invoked by S1APTester TFW callback
 
         Args:
             timeout: Timeout value
-            assert_on_timeout: Trigger assert on timeout
 
         Returns:
             Response Message or None
@@ -224,12 +225,11 @@ class S1ApUtil(object):
         try:
             return self._msg.get(True, timeout)
         except Empty:
-            if assert_on_timeout:
-                raise AssertionError(
-                    "Timeout ("
-                    + str(timeout)
-                    + " sec) occurred while waiting for response message",
-                ) from None
+            raise AssertionError(
+                "Timeout ("
+                + str(timeout)
+                + " sec) occurred while waiting for response message",
+            ) from None
 
     def populate_pco(
         self,
@@ -626,8 +626,12 @@ class S1ApUtil(object):
             if len(uplink_flows) == num_ul_flows:
                 break
             time.sleep(5)  # sleep for 5 seconds before retrying
-        assert len(uplink_flows) == num_ul_flows, \
-            f"Uplink flow missing for UE: {len(uplink_flows)} != {num_ul_flows}"
+        assert (
+            len(uplink_flows) == num_ul_flows
+        ), (
+            f"Uplink flow missing for UE: "
+            f"{len(uplink_flows)} != {num_ul_flows}",
+        )
 
         assert uplink_flows[0]["match"]["tunnel_id"] is not None
 
@@ -844,14 +848,18 @@ class MagmadUtil(object):
     ha_service_cmds = Enum("ha_service_cmds", "DISABLE ENABLE")
     config_ipv6_iface_cmds = Enum("config_ipv6_iface_cmds", "DISABLE ENABLE")
 
+    EXTRA_WAIT_TIME_FOR_OTHER_SERVICES_SECONDS = 10
+    WAIT_INTERVAL_SECONDS = 5
+    MAX_WAIT_SECONDS = 120
+
     _init_system = None
 
-    def __init__(self, magmad_client):
+    def __init__(self, magmad_client: MagmadServiceGrpc):
         """
         Init magmad util.
 
         Args:
-            magmad_client: MagmadServiceClient
+            magmad_client: MagmadServiceGrpc
         """
         self._magmad_client = magmad_client
 
@@ -882,7 +890,9 @@ class MagmadUtil(object):
         Returns:
             status of command execution
         """
-        param_list = shlex.split(self._command.format(**self._credentials, command=f'"{command}"'))
+        param_list = shlex.split(
+            self._command.format(**self._credentials, command=f'"{command}"'),
+        )
         return subprocess.call(
             param_list,
             shell=False,
@@ -900,13 +910,18 @@ class MagmadUtil(object):
         Returns:
             output of command execution
         """
-        param_list = shlex.split(self._command.format(**self._credentials, command=f'"{command}"'))
+        param_list = shlex.split(
+            self._command.format(**self._credentials, command=f'"{command}"'),
+        )
         return subprocess.check_output(
             param_list,
             shell=False,
         ).decode("utf-8")
 
-    def exec_command_capture_output(self, command: str) -> subprocess.CompletedProcess:
+    def exec_command_capture_output(
+        self,
+        command: str,
+    ) -> subprocess.CompletedProcess:
         """Run a command remotely on magma_dev VM.
 
         Unlike `exec_command_output`, this method does not raise an exception
@@ -917,9 +932,12 @@ class MagmadUtil(object):
             e.g. 'sed -i \'s/config1/config2/g\' /etc/magma/mme.yml'
 
         Returns:
-            Output  of command execution as instance of subprocess.CompletedProcess
+            Output of command execution as instance
+            of subprocess.CompletedProcess
         """
-        param_list = shlex.split(self._command.format(**self._credentials, command=f'"{command}"'))
+        param_list = shlex.split(
+            self._command.format(**self._credentials, command=f'"{command}"'),
+        )
         return subprocess.run(
             param_list,
             shell=False,
@@ -933,7 +951,8 @@ class MagmadUtil(object):
                 "systemctl is-active magma@magmad",
             ).stdout.decode("utf-8").strip('\n')
             if res_systemd == 'active':
-                # default to systemd if docker and systemd are running - needed by feg integ tests
+                # default to systemd if docker and systemd are running
+                # - needed by feg integ tests
                 return InitMode.SYSTEMD
 
         if self._is_installed("docker"):
@@ -947,7 +966,7 @@ class MagmadUtil(object):
             "either in Docker or systemd",
         )
 
-    def _is_installed(self, cmd):
+    def _is_installed(self, cmd: str):
         """Check if a command is installed on the system."""
         is_installed = self.exec_command(f"type {cmd} >/dev/null 2>&1") == 0
         if not is_installed:
@@ -958,7 +977,7 @@ class MagmadUtil(object):
     def init_system(self):
         return self._init_system
 
-    def config_stateless(self, cmd):
+    def config_stateless(self, cmd: stateless_cmds):
         """
         Configure the stateless mode on the access gateway
 
@@ -1002,54 +1021,74 @@ class MagmadUtil(object):
         self.exec_command(MAGTIVATE_CMD + " && " + state_corrupt_cmd)
         print(f"Corrupted {key} on redis")
 
-    def restart_all_services(self):
+    def restart_magma_services(self):
         """Restart all magma services on magma_dev VM"""
         if self._init_system == InitMode.SYSTEMD:
             self.exec_command(
-                "sudo systemctl stop 'magma@*' 'sctpd' ;"
+                "sudo systemctl stop 'magma@*' ;"
                 "sudo systemctl start magma@magmad",
             )
             self._wait_for_pipelined_to_initialize()
 
-            EXTRA_WAIT_TIME_FOR_OTHER_SERVICES_SECONDS = 10
-            print(f"Waiting {EXTRA_WAIT_TIME_FOR_OTHER_SERVICES_SECONDS} seconds to ensure all services restarted ...")
-            time.sleep(EXTRA_WAIT_TIME_FOR_OTHER_SERVICES_SECONDS)
+            print(
+                f"Waiting {self.EXTRA_WAIT_TIME_FOR_OTHER_SERVICES_SECONDS} "
+                f"seconds to ensure all services restarted ...",
+            )
+            time.sleep(self.EXTRA_WAIT_TIME_FOR_OTHER_SERVICES_SECONDS)
         elif self._init_system == InitMode.DOCKER:
             self.exec_command(
                 "cd /home/vagrant/magma/lte/gateway/docker "
-                "&& docker-compose restart",
+                "&& docker compose restart",
             )
             self.wait_for_restart_to_finish(wait_time=30)
             self._wait_for_pipelined_to_initialize()
 
     def _wait_for_pipelined_to_initialize(self):
         """
-        Introduced, because pipelined is the first service the tests communicate with and
-        it has been observed that the previous static waiting time is not sufficient.
+        Introduced, because pipelined is the first service the tests
+        communicate with and it has been observed that the previous
+        static waiting time is not sufficient.
         """
         print("Waiting for pipelined to be started ...")
         wait_time_seconds = 0
 
-        WAIT_INTERVAL_SECONDS = 5
-        MAX_WAIT_SECONDS = 120
-        print(f"  check every {WAIT_INTERVAL_SECONDS} seconds (max {MAX_WAIT_SECONDS} seconds) if pipelined is started ...")
+        print(
+            f"  check every {self.WAIT_INTERVAL_SECONDS} seconds "
+            f"(max {self.MAX_WAIT_SECONDS} seconds) if pipelined is started ...",
+        )
         datapath_is_initialized = False
         while not datapath_is_initialized:
-            pipelined_is_running, datapath_is_initialized = get_datapath_state()
+            pipelined_is_running, datapath_is_initialized =\
+                get_datapath_state()
             if not pipelined_is_running:
-                print(f"  pipelined not yet running for {wait_time_seconds} seconds ...")
+                print(
+                    f"  pipelined not yet running for "
+                    f"{wait_time_seconds} seconds ...",
+                )
             elif not datapath_is_initialized:
-                print(f"  datapath not yet initialized for {wait_time_seconds} seconds ...")
+                print(
+                    f"  datapath not yet initialized for "
+                    f"{wait_time_seconds} seconds ...",
+                )
             else:
-                print(f"  datapath is initialized after {wait_time_seconds} seconds!")
+                print(
+                    f"  datapath is initialized after "
+                    f"{wait_time_seconds} seconds!",
+                )
                 break
 
-            if wait_time_seconds >= MAX_WAIT_SECONDS and not datapath_is_initialized:
-                raise RuntimeError(f"Pipelined failed to initialize after {MAX_WAIT_SECONDS} seconds.")
-            time.sleep(WAIT_INTERVAL_SECONDS)
-            wait_time_seconds += WAIT_INTERVAL_SECONDS
+            if (
+                wait_time_seconds >= self.MAX_WAIT_SECONDS
+                and not datapath_is_initialized
+            ):
+                raise RuntimeError(
+                    f"Pipelined failed to initialize after "
+                    f"{self.MAX_WAIT_SECONDS} seconds.",
+                )
+            time.sleep(self.WAIT_INTERVAL_SECONDS)
+            wait_time_seconds += self.WAIT_INTERVAL_SECONDS
 
-    def restart_services(self, services, wait_time=0):
+    def restart_services(self, services: List[str], wait_time: int = 0):
         """
         Restart a list of magmad services.
         Hint:
@@ -1062,9 +1101,9 @@ class MagmadUtil(object):
             wait_time: (int) max wait time for restart of the services
         """
         for service in services:
-            service_name = self.get_service_name_from_init_system(service)
+            service_name = self.map_service_to_init_system_service_name(service)
             if self._init_system == InitMode.SYSTEMD:
-                self.exec_command(f"sudo systemctl restart {service_name}")
+                self.exec_command(f"sudo systemctl --no-block restart {service_name}")
             elif self._init_system == InitMode.DOCKER:
                 # TODO GH14055
                 # The docker restart part is ugly due to some technical debt:
@@ -1083,7 +1122,7 @@ class MagmadUtil(object):
                     or service_name == "pipelined"
                 ):
                     self.exec_command(
-                        "docker restart oai_mme mobilityd sessiond "
+                        "docker restart --time 1 oai_mme mobilityd sessiond "
                         "connectiond pipelined envoy_controller",
                     )
                 elif service_name == "sctpd":
@@ -1098,74 +1137,102 @@ class MagmadUtil(object):
                         "connectiond pipelined envoy_controller",
                     )
                 else:
-                    self.exec_command(f"docker restart {service_name}")
+                    self.exec_command(f"docker restart --time 1 {service_name}")
 
         self.wait_for_restart_to_finish(wait_time)
 
-    def wait_for_restart_to_finish(self, wait_time):
+    def restart_single_service(self, service: str, wait_time: int = 0):
+        """
+        Restart a sigle magmad services.
+        This separate restart function is a result of the interdependencies
+        mentioned in the `restart_services` fct. Since multiple services/
+        docker containers are restarted, some race condition between these
+        restarts and 3GPP spec timers occur. Especially in the docker init
+        mode, this leads to failing tests in CI due to performance issues.
+        Since we hard code these intedependent container restarts for testing
+        only, one test is executed with only a MME restart to keep it green;
+        Test3485TimerForDefaultBearerWithMmeRestart.
+
+        Args:
+            service: (str) service name
+            wait_time: (int) max wait time for restart of the services
+        """
+
+        service_name = self.map_service_to_init_system_service_name(service)
+        if self._init_system == InitMode.SYSTEMD:
+            self.exec_command(f"sudo systemctl --no-block restart {service_name}")
+        elif self._init_system == InitMode.DOCKER:
+            self.exec_command(f"docker restart --time 1 {service_name}")
+
+        self.wait_for_restart_to_finish(wait_time)
+
+    def wait_for_restart_to_finish(self, wait_time: int):
         """wait for started services to become active or until timeout
 
         Args:
             wait_time: (int) max time to wait for services to become active
         """
-        print(
-            f"Waiting for a maximum of {wait_time} "
-            f"seconds for restart to finish",
-        )
-        if self._init_system == InitMode.DOCKER:
+        if self._init_system in (InitMode.DOCKER, InitMode.SYSTEMD):
+            print(
+                f"Waiting for a maximum of {wait_time} "
+                f"seconds for restart to finish",
+            )
             start_time = time.time()
             all_services_active = False
             while (
                 not all_services_active
-                and time.time() - start_time < wait_time
             ):
                 all_services_active = self.check_if_magma_services_are_active()
                 time.sleep(5)
-        elif self._init_system == InitMode.SYSTEMD:
-            time.sleep(wait_time)
 
-    def enable_service(self, service):
+                if time.time() - start_time > wait_time:
+                    print("Timeout reached while waiting for services to restart")
+                    return
+
+    def enable_services(self, services: List[str]):
         """Enable a magma service on magma_dev VM and starts it
 
         Args:
             service: (str) service to enable
         """
-        service_name = self.get_service_name_from_init_system(service)
-        if self._init_system == InitMode.SYSTEMD:
-            self.exec_command(f"sudo systemctl unmask {service_name}")
-            self.exec_command(f"sudo systemctl start {service_name}")
-        elif self._init_system == InitMode.DOCKER:
-            self.exec_command(f"docker start {service_name}")
+        for service in services:
+            service_name = self.map_service_to_init_system_service_name(service)
+            if self._init_system == InitMode.SYSTEMD:
+                self.exec_command(f"sudo systemctl unmask {service_name}")
+                self.exec_command(f"sudo systemctl start {service_name}")
+            elif self._init_system == InitMode.DOCKER:
+                self.exec_command(f"docker start {service_name}")
 
-    def disable_service(self, service):
+    def disable_services(self, services: List[str]):
         """Disables a magma service on magma_dev VM, preventing from
         starting again
 
         Args:
             service: (str) service to disable
         """
-        service_name = self.get_service_name_from_init_system(service)
-        if self._init_system == InitMode.SYSTEMD:
-            self.exec_command(f"sudo systemctl mask {service_name}")
-            self.exec_command(f"sudo systemctl stop {service_name}")
-        elif self._init_system == InitMode.DOCKER:
-            # TODO GH14055
-            # Same argument as above: The container interdependencies
-            # are handled manually at the moment
-            #
+        for service in services:
+            service_name = self.map_service_to_init_system_service_name(service)
+            if self._init_system == InitMode.SYSTEMD:
+                self.exec_command(f"sudo systemctl mask {service_name}")
+                self.exec_command(f"sudo systemctl stop {service_name}")
+            elif self._init_system == InitMode.DOCKER:
+                # TODO GH14055
+                # Same argument as above: The container interdependencies
+                # are handled manually at the moment
+                #
 
-            if (
-                service_name == "oai_mme"
-                or service_name == "sessiond"
-                or service_name == "mobilityd"
-                or service_name == "pipelined"
-            ):
-                self.exec_command(
-                    "docker stop oai_mme mobilityd sessiond "
-                    "connectiond pipelined envoy_controller",
-                )
-            else:
-                self.exec_command(f"docker stop {service_name}")
+                if (
+                    service_name == "oai_mme"
+                    or service_name == "sessiond"
+                    or service_name == "mobilityd"
+                    or service_name == "pipelined"
+                ):
+                    self.exec_command(
+                        "docker stop oai_mme mobilityd sessiond "
+                        "connectiond pipelined envoy_controller",
+                    )
+                else:
+                    self.exec_command(f"docker stop {service_name}")
 
     def check_if_magma_services_are_active(self) -> bool:
         """check if all services in the list are active (only works for docker
@@ -1174,20 +1241,14 @@ class MagmadUtil(object):
         Returns:
             (bool) True if all services are active, False otherwise
         """
-        magma_services = {
-            "mme", "magmad", "sctpd", "sessiond", "policydb", "state",
-            "directoryd", "connectiond", "td-agent-bit", "redis",
-            "subscriberdb", "eventd", "mobilityd", "pipelined", "monitord",
-            "envoy_controller", "smsd", "enodebd", "redirectd", "ctraced",
-            "control_proxy",
-        }
+        magma_services = self.get_magma_services()
         for service in magma_services:
             if not self.is_service_active(service):
                 print(f"************* {service} is not running")
                 return False
         return True
 
-    def is_service_active(self, service) -> bool:
+    def is_service_active(self, service: str) -> bool:
         """Check if a magma service on magma_dev VM is active
 
         Args:
@@ -1196,7 +1257,7 @@ class MagmadUtil(object):
         Returns:
             service active status
         """
-        service_name = self.get_service_name_from_init_system(service)
+        service_name = self.map_service_to_init_system_service_name(service)
         if self._init_system == InitMode.SYSTEMD:
             is_active_service_cmd = f"systemctl is-active {service_name}"
             return (
@@ -1216,7 +1277,7 @@ class MagmadUtil(object):
             )
         return False
 
-    def check_service_activity(self, is_active_service_cmd):
+    def check_service_activity(self, is_active_service_cmd: str) -> str:
         try:
             result_str = self.exec_command_output(is_active_service_cmd)
         except subprocess.CalledProcessError as e:
@@ -1225,7 +1286,7 @@ class MagmadUtil(object):
             result_str = e.output
         return result_str
 
-    def get_service_name_from_init_system(self, service):
+    def map_service_to_init_system_service_name(self, service):
         """Get the correct service name depending on the init system
 
         Args:
@@ -1235,8 +1296,12 @@ class MagmadUtil(object):
             (str) service name
         """
         if self._init_system == InitMode.SYSTEMD:
-            if service == "sctpd":
-                return "sctpd"
+            if (
+                service == "sctpd"
+                or service == "openvswitch-switch"
+                or service == "magma_dp@envoy"
+            ):
+                return service
             else:
                 return f"magma@{service}"
         elif self._init_system == InitMode.DOCKER:
@@ -1244,6 +1309,43 @@ class MagmadUtil(object):
                 return "oai_mme"
             else:
                 return service
+        else:
+            return service
+
+    def get_magma_services(self) -> List[str]:
+        """
+        Returns a list of all services managed by magmad and additionally
+        (depending on the init system) services that are not managed by magmad
+        """
+        non_magmad_services = [
+            'magmad',
+            'sctpd',
+        ]
+
+        systemd_only_magma_services = [
+            'openvswitch-switch',
+            'magma_dp@envoy',
+        ]
+
+        docker_only_magma_services = [
+            'connectiond',
+            'monitord',
+            'redirectd',
+            'td-agent-bit',
+        ]
+
+        raw_magmad_yml = self.exec_command_output('cat /etc/magma/magmad.yml')
+        magmad_yml = yaml.load(raw_magmad_yml, Loader=yaml.loader.SafeLoader)
+        magma_services = magmad_yml['magma_services'] + non_magmad_services
+        magma_services.remove('health')
+
+        if self._init_system == InitMode.SYSTEMD:
+            return magma_services + systemd_only_magma_services
+        elif self._init_system == InitMode.DOCKER:
+            magma_services.remove('dnsd')
+            return magma_services + docker_only_magma_services
+        else:
+            return magma_services
 
     def update_mme_config_for_sanity(self, cmd):
         """Update MME configuration for all sanity test cases"""
@@ -1286,7 +1388,7 @@ class MagmadUtil(object):
                 + " MME configuration. Error: Unknown error"
             )
 
-    def update_mme_config_for_non_sanity(self, cmd):
+    def update_mme_config_for_non_sanity(self, cmd: config_update_cmds):
         """Update mme config file to test non-sanity testcases
 
         Args:
@@ -1334,7 +1436,7 @@ class MagmadUtil(object):
                 + " MME configuration. Error: Unknown error",
             )
 
-    def config_apn_correction(self, cmd):
+    def config_apn_correction(self, cmd: apn_correction_cmds):
         """Configure the apn correction mode on the access gateway
 
         Args:
@@ -1379,7 +1481,7 @@ class MagmadUtil(object):
             )
             self.exec_command(f"sudo {health_config_cmd}")
             if self.is_service_active(magma_health_service_name):
-                self.disable_service(magma_health_service_name)
+                self.disable_services([magma_health_service_name])
             print("Health service is disabled")
         elif cmd.name == MagmadUtil.health_service_cmds.ENABLE.name:
             health_config_cmd = (
@@ -1388,10 +1490,10 @@ class MagmadUtil(object):
             )
             self.exec_command(f"sudo {health_config_cmd}")
             if not self.is_service_active(magma_health_service_name):
-                self.enable_service("health")
+                self.enable_services([magma_health_service_name])
             print("Health service is enabled")
 
-    def config_ha_service(self, cmd):
+    def config_ha_service(self, cmd: ha_service_cmds) -> int:
         """
         Modify the mme configuration by enabling/disabling use of Ha service
 
@@ -1435,8 +1537,8 @@ class MagmadUtil(object):
                     "/etc/magma/mme.yml"
                 )
 
-        ret_code = self.exec_command("sudo " + ha_config_cmd)
-        if ret_code == 0:
+        ret_code = str(self.exec_command("sudo " + ha_config_cmd))
+        if ret_code == "0":
             print("Ha service configured successfully")
             return 1
 
@@ -1467,7 +1569,7 @@ class MagmadUtil(object):
             mme_ueip_imsi_map_entries,
         )
 
-    def is_redis_empty(self):
+    def is_redis_empty(self) -> bool:
         """
         Check that the per-IMSI state in Redis data store on AGW is empty
         """
@@ -1479,7 +1581,7 @@ class MagmadUtil(object):
             num_htbl_entries == 0 and \
             s1ap_imsi_map_entries == 0
 
-    def get_redis_state(self):
+    def get_redis_state(self) -> Tuple[List[str], int, int, int]:
         """
         Get the per-IMSI state in Redis data store on AGW
         """
@@ -1523,7 +1625,7 @@ class MagmadUtil(object):
         return keys_to_be_cleaned, mme_ueip_imsi_map_entries, \
             num_htbl_entries, s1ap_imsi_map_entries
 
-    def enable_nat(self, ip_version=4):
+    def enable_nat(self, ip_version: int = 4):
         """Enable Nat"""
         self._set_agw_nat(True)
         self._validate_nated_datapath(ip_version)
@@ -1538,7 +1640,7 @@ class MagmadUtil(object):
                 "sudo ip route add default via 2020::10 dev eth0",
             )
 
-    def disable_nat(self, ip_version=4):
+    def disable_nat(self, ip_version: int = 4):
         """
         Disable Nat
 
@@ -1568,11 +1670,42 @@ class MagmadUtil(object):
             )
             self.exec_command("sudo ip addr replace 3001::10 dev uplink_br0")
             self.exec_command(
-                "sudo ip route -A inet6 add default via 3001::2 dev uplink_br0",
+                "sudo ip route -A inet6 add default "
+                "via 3001::2 dev uplink_br0",
             )
 
         self._set_agw_nat(False)
         self._validate_non_nat_datapath(ip_version)
+
+    def enable_dhcp_config(self):
+        mconfig_conf = (
+            "/home/vagrant/magma/lte/gateway/configs/gateway.mconfig"
+        )
+        with open(mconfig_conf, "r") as json_file:
+            data = json.load(json_file)
+            data["configs_by_key"]["mobilityd"]["ip_allocator_type"] = "DHCP"
+            data["configs_by_key"]["mobilityd"]["static_ip_enabled"] = False
+            data["configs_by_key"]["mobilityd"]["ipBlock"] = None
+            data["configs_by_key"]["mobilityd"]["ipv6Block"] = None
+            data["configs_by_key"]["mobilityd"]["ipv6PrefixAllocationType"] = None
+
+        with open(mconfig_conf, "w") as json_file:
+            json.dump(data, json_file, sort_keys=True, indent=2)
+
+    def disable_dhcp_config(self):
+        mconfig_conf = (
+            "/home/vagrant/magma/lte/gateway/configs/gateway.mconfig"
+        )
+        with open(mconfig_conf, "r") as json_file:
+            data = json.load(json_file)
+            data["configs_by_key"]["mobilityd"]["ip_allocator_type"] = "IP_POOL"
+            data["configs_by_key"]["mobilityd"]["static_ip_enabled"] = True
+            data["configs_by_key"]["mobilityd"]["ipBlock"] = "192.168.128.0/24"
+            data["configs_by_key"]["mobilityd"]["ipv6Block"] = "fdee:5:6c::/48"
+            data["configs_by_key"]["mobilityd"]["ipv6PrefixAllocationType"] = "RANDOM"
+
+        with open(mconfig_conf, "w") as json_file:
+            json.dump(data, json_file, sort_keys=True, indent=2)
 
     def _set_agw_nat(self, enable: bool):
         mconfig_conf = (
@@ -1587,23 +1720,36 @@ class MagmadUtil(object):
         with open(mconfig_conf, "w") as json_file:
             json.dump(data, json_file, sort_keys=True, indent=2)
 
-        self.restart_all_services()
+        self.restart_services(['sctpd'], wait_time=30)
+        self.restart_magma_services()
 
-    def _validate_non_nat_datapath(self, ip_version=4):
+    def is_nat_enabled(self):
+        mconfig_conf = (
+            "/home/vagrant/magma/lte/gateway/configs/gateway.mconfig"
+        )
+        with open(mconfig_conf, "r") as json_file:
+            data = json.load(json_file)
+
+        in_mme_enabled = data["configs_by_key"]["mme"]["natEnabled"] == True
+        in_pipelined_enabled = data["configs_by_key"]["pipelined"]["natEnabled"] == True
+
+        return in_mme_enabled and in_pipelined_enabled
+
+    def _validate_non_nat_datapath(self, ip_version: int = 4):
         # validate SGi interface is part of uplink-bridge.
         out1 = self.exec_command_output("sudo ovs-vsctl list-ports uplink_br0")
         iface = "eth2" if ip_version == 4 else "eth3"
         assert iface in str(out1)
         print("NAT is disabled")
 
-    def _validate_nated_datapath(self, ip_version=4):
+    def _validate_nated_datapath(self, ip_version: int = 4):
         # validate SGi interface is not part of uplink-bridge.
         out1 = self.exec_command_output("sudo ovs-vsctl list-ports uplink_br0")
         iface = "eth2" if ip_version == 4 else "eth3"
         assert iface not in str(out1)
         print("NAT is enabled")
 
-    def config_ipv6_iface(self, cmd):
+    def config_ipv6_iface(self, cmd: config_ipv6_iface_cmds):
         """
         Configure eth3 interface for ipv6 data on the access gateway
 
@@ -1680,7 +1826,7 @@ class MobilityUtil(object):
             removed_blocks: (tuple(ip_network)): tuple of ipaddress.ip_netework
                 objects representing the removed IP blocks.
         """
-        removed_blocks = self._mobility_client.remove_ip_blocks(blocks)
+        removed_blocks = self._mobility_client.remove_ip_blocks(blocks, force=True)
         return removed_blocks
 
     def cleanup(self):
@@ -2257,6 +2403,7 @@ class GTPBridgeUtils(object):
             if self.gtp_port_name in line:
                 port_info = line.split()
                 return port_info[1]
+        return None
 
     def get_proxy_port_no(self) -> Optional[int]:
         """Fetch the proxy port number"""
@@ -2267,10 +2414,11 @@ class GTPBridgeUtils(object):
             if self.proxy_port in line:
                 port_info = line.split()
                 return port_info[1]
+        return None
 
     # RYU rest API is not able dump flows from non zero table.
     # this adds similar API using `ovs-ofctl` cmd
-    def get_flows(self, table_id) -> []:
+    def get_flows(self, table_id) -> List[str]:
         """Fetch the OVS flow rules"""
         output = self.magma_utils.exec_command_output(
             f"sudo ovs-ofctl dump-flows gtp_br0 table={table_id}",
@@ -2284,7 +2432,8 @@ class GTPBridgeUtils(object):
         )
         if ret_code != 0:
             print(
-                f"Failed to delete OVS flow rules for gtp_br0 table={table_id}",
+                f"Failed to delete OVS flow rules "
+                f"for gtp_br0 table={table_id}",
             )
 
 
@@ -2322,15 +2471,15 @@ class HeaderEnrichmentUtils(object):
         print("restarting envoy")
         if self.magma_utils.init_system == InitMode.SYSTEMD:
             self.magma_utils.exec_command_output(
-                "sudo service magma@envoy_controller restart",
+                "sudo systemctl restart magma@envoy_controller",
             )
         elif self.magma_utils.init_system == InitMode.DOCKER:
             self.magma_utils.exec_command_output(
-                "docker restart envoy_controller",
+                "docker restart --time 1 envoy_controller",
             )
         time.sleep(5)
         self.magma_utils.exec_command_output(
-            "sudo service magma_dp@envoy restart",
+            "sudo systemctl restart magma_dp@envoy",
         )
         time.sleep(20)
         print("restarting envoy done")

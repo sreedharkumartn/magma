@@ -21,7 +21,7 @@ extern "C" {
 #include "lte/gateway/c/core/oai/common/log.h"
 #include "lte/gateway/c/core/oai/include/amf_config.hpp"
 #include "lte/gateway/c/core/oai/include/nas/networkDef.h"
-#include "lte/gateway/c/core/oai/include/s6a_messages_types.h"
+#include "lte/gateway/c/core/oai/include/s6a_messages_types.hpp"
 #include "lte/gateway/c/core/oai/lib/3gpp/3gpp_38.401.h"
 #ifdef __cplusplus
 }
@@ -41,6 +41,7 @@ extern "C" {
 #include "lte/gateway/c/core/oai/tasks/nas/api/mme/mme_api.hpp"
 #include "lte/gateway/c/core/oai/tasks/nas5g/include/M5GNasEnums.h"
 #include "lte/gateway/c/core/oai/tasks/nas5g/include/M5gNasMessage.h"
+#include "lte/gateway/c/core/oai/tasks/amf/include/amf_app_statistics.hpp"
 
 using magma5g::AsyncSmfServiceClient;
 

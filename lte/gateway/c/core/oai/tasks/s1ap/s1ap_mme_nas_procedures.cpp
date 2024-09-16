@@ -22,6 +22,8 @@
   \email: lionel.gauthier@eurecom.fr
 */
 
+#include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_mme_nas_procedures.hpp"
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -31,10 +33,12 @@
 extern "C" {
 #endif
 #include "lte/gateway/c/core/oai/common/log.h"
+#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
 #include "lte/gateway/c/core/common/assertions.h"
 #ifdef __cplusplus
 }
 #endif
+
 #include "INTEGER.h"
 #include "OCTET_STRING.h"
 #include "S1ap_AllocationAndRetentionPriority.h"
@@ -67,18 +71,16 @@ extern "C" {
 #include "lte/gateway/c/core/oai/common/asn1_conversions.h"
 #include "lte/gateway/c/core/oai/common/conversions.h"
 #include "lte/gateway/c/core/oai/include/TrackingAreaIdentity.h"
-#include "lte/gateway/c/core/oai/include/nas/securityDef.h"
+#include "lte/gateway/c/core/oai/include/nas/securityDef.hpp"
 #include "lte/gateway/c/core/oai/include/s1ap_state.hpp"
 #include "lte/gateway/c/core/oai/include/service303.hpp"
 #include "lte/gateway/c/core/oai/lib/3gpp/3gpp_23.003.h"
 #include "lte/gateway/c/core/oai/lib/3gpp/3gpp_36.413.h"
-#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
 #include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_common.hpp"
 #include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_mme.hpp"
 #include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_mme_encoder.hpp"
 #include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_mme_handlers.hpp"
 #include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_mme_itti_messaging.hpp"
-#include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_mme_nas_procedures.hpp"
 #include "orc8r/gateway/c/common/service303/MetricsHelpers.hpp"
 
 #define EXT_UE_AMBR_UL 10000000000
@@ -107,6 +109,11 @@ status_code_e s1ap_mme_handle_initial_ue_message(oai::S1apState* state,
 
   S1AP_FIND_PROTOCOLIE_BY_ID(S1ap_InitialUEMessage_IEs_t, ie, container,
                              S1ap_ProtocolIE_ID_id_eNB_UE_S1AP_ID, true);
+
+  if (!ie) {
+    OAILOG_ERROR(LOG_S1AP, "Missing ENB_UE_S1AP_ID\n");
+    OAILOG_FUNC_RETURN(LOG_S1AP, RETURNerror);
+  }
 
   OAILOG_INFO(
       LOG_S1AP,
@@ -204,6 +211,12 @@ status_code_e s1ap_mme_handle_initial_ue_message(oai::S1apState* state,
     // CGI mandatory IE
     S1AP_FIND_PROTOCOLIE_BY_ID(S1ap_InitialUEMessage_IEs_t, ie, container,
                                S1ap_ProtocolIE_ID_id_EUTRAN_CGI, true);
+
+    if (!ie) {
+      OAILOG_ERROR(LOG_S1AP, "EUTRAN_CGI IE not found\n");
+      return RETURNerror;
+    }
+
     if (!(ie->value.choice.EUTRAN_CGI.pLMNidentity.size == 3)) {
       OAILOG_ERROR(LOG_S1AP, "Incorrect PLMN size \n");
       return RETURNerror;
@@ -246,24 +259,34 @@ status_code_e s1ap_mme_handle_initial_ue_message(oai::S1apState* state,
      */
     S1AP_FIND_PROTOCOLIE_BY_ID(S1ap_InitialUEMessage_IEs_t, ie, container,
                                S1ap_ProtocolIE_ID_id_NAS_PDU, true);
+
     S1AP_FIND_PROTOCOLIE_BY_ID(S1ap_InitialUEMessage_IEs_t, ie_cause, container,
                                S1ap_ProtocolIE_ID_id_RRC_Establishment_Cause,
                                true);
-    s1ap_mme_itti_s1ap_initial_ue_message(
-        assoc_id, eNB_ref.enb_id(), ue_ref->enb_ue_s1ap_id(),
-        ie->value.choice.NAS_PDU.buf, ie->value.choice.NAS_PDU.size, &tai,
-        &ecgi, ie_cause->value.choice.RRC_Establishment_Cause,
-        ie_e_tmsi ? &s_tmsi : NULL, ie_csg_id ? &csg_id : NULL,
-        ie_gummei ? &gummei : NULL,
-        NULL,  // CELL ACCESS MODE
-        NULL,  // GW Transport Layer Address
-        NULL   // Relay Node Indicator
-    );
+
+    if (!ie || !ie_cause) {
+      OAILOG_ERROR(LOG_S1AP, "Missing RRC Establishment Cause IE\n");
+      OAILOG_FUNC_RETURN(LOG_S1AP, RETURNerror);
+    }
+
+    if ((s1ap_mme_itti_s1ap_initial_ue_message(
+            assoc_id, eNB_ref.enb_id(), ue_ref->enb_ue_s1ap_id(),
+            ie->value.choice.NAS_PDU.buf, ie->value.choice.NAS_PDU.size, &tai,
+            &ecgi, ie_cause->value.choice.RRC_Establishment_Cause,
+            ie_e_tmsi ? &s_tmsi : NULL, ie_csg_id ? &csg_id : NULL,
+            ie_gummei ? &gummei : NULL,
+            NULL,   // CELL ACCESS MODE
+            NULL,   // GW Transport Layer Address
+            NULL))  // Relay Node Indicator
+        == RETURNerror) {
+      OAILOG_FUNC_RETURN(LOG_S1AP, RETURNerror);
+    }
 
   } else {
     imsi64_t imsi64 = INVALID_IMSI64;
-    s1ap_imsi_map_t* s1ap_imsi_map = get_s1ap_imsi_map();
-    s1ap_imsi_map->mme_ueid2imsi_map.get(ue_ref->mme_ue_s1ap_id(), &imsi64);
+    magma::proto_map_uint32_uint64_t ueid_imsi_map;
+    get_s1ap_ueid_imsi_map(&ueid_imsi_map);
+    ueid_imsi_map.get(ue_ref->mme_ue_s1ap_id(), &imsi64);
 
     OAILOG_ERROR_UE(
         LOG_S1AP, imsi64,
@@ -296,10 +319,20 @@ status_code_e s1ap_mme_handle_uplink_nas_transport(
 
   S1AP_FIND_PROTOCOLIE_BY_ID(S1ap_UplinkNASTransport_IEs_t, ie, container,
                              S1ap_ProtocolIE_ID_id_eNB_UE_S1AP_ID, true);
+  if (!ie) {
+    OAILOG_ERROR(LOG_S1AP,
+                 "Missing ENB_UE_S1AP_ID in Uplink NAS Transport message\n");
+    OAILOG_FUNC_RETURN(LOG_S1AP, RETURNerror);
+  }
   enb_ue_s1ap_id = (enb_ue_s1ap_id_t)ie->value.choice.ENB_UE_S1AP_ID;
 
   S1AP_FIND_PROTOCOLIE_BY_ID(S1ap_UplinkNASTransport_IEs_t, ie, container,
                              S1ap_ProtocolIE_ID_id_MME_UE_S1AP_ID, true);
+  if (!ie) {
+    OAILOG_ERROR(LOG_S1AP,
+                 "Missing MME_UE_S1AP_ID in Uplink NAS Transport message\n");
+    OAILOG_FUNC_RETURN(LOG_S1AP, RETURNerror);
+  }
   mme_ue_s1ap_id = (mme_ue_s1ap_id_t)ie->value.choice.MME_UE_S1AP_ID;
 
   if ((s1ap_state_get_enb(state, assoc_id, &enb_ref)) != PROTO_MAP_OK) {
@@ -335,8 +368,10 @@ status_code_e s1ap_mme_handle_uplink_nas_transport(
           "mme_ue_s1ap_id: " MME_UE_S1AP_ID_FMT "\n",
           mme_ue_s1ap_id);
       imsi64_t imsi64 = INVALID_IMSI64;
-      s1ap_imsi_map_t* s1ap_imsi_map = get_s1ap_imsi_map();
-      s1ap_imsi_map->mme_ueid2imsi_map.get(mme_ue_s1ap_id, &imsi64);
+
+      magma::proto_map_uint32_uint64_t ueid_imsi_map;
+      get_s1ap_ueid_imsi_map(&ueid_imsi_map);
+      ueid_imsi_map.get(mme_ue_s1ap_id, &imsi64);
 
       s1ap_mme_generate_ue_context_release_command(
           state, ue_ref, S1AP_INVALID_MME_UE_S1AP_ID, imsi64, assoc_id, stream,
@@ -455,8 +490,9 @@ status_code_e s1ap_mme_handle_nas_non_delivery(oai::S1apState* state,
     OAILOG_FUNC_RETURN(LOG_S1AP, RETURNerror);
   }
 
-  s1ap_imsi_map_t* imsi_map = get_s1ap_imsi_map();
-  imsi_map->mme_ueid2imsi_map.get(mme_ue_s1ap_id, &imsi64);
+  magma::proto_map_uint32_uint64_t ueid_imsi_map;
+  get_s1ap_ueid_imsi_map(&ueid_imsi_map);
+  ueid_imsi_map.get(mme_ue_s1ap_id, &imsi64);
 
   if (ue_ref->s1ap_ue_state() != oai::S1AP_UE_CONNECTED) {
     OAILOG_DEBUG_UE(
@@ -520,8 +556,10 @@ status_code_e s1ap_generate_downlink_nas_transport(
      * We have found the UE in the list.
      * * * * Create new IE list message and encode it.
      */
-    s1ap_imsi_map_t* imsi_map = get_s1ap_imsi_map();
-    if ((imsi_map->mme_ueid2imsi_map.insert(ue_id, imsi64) ==
+
+    magma::proto_map_uint32_uint64_t ueid_imsi_map;
+    get_s1ap_ueid_imsi_map(&ueid_imsi_map);
+    if ((ueid_imsi_map.insert(ue_id, imsi64) ==
          magma::PROTO_MAP_KEY_ALREADY_EXISTS)) {
       *is_state_same = true;
     }
@@ -879,8 +917,9 @@ void s1ap_handle_conn_est_cnf(
     OAILOG_FUNC_OUT(LOG_S1AP);
   }
 
-  s1ap_imsi_map_t* imsi_map = get_s1ap_imsi_map();
-  imsi_map->mme_ueid2imsi_map.insert(conn_est_cnf_pP->ue_id, imsi64);
+  magma::proto_map_uint32_uint64_t ueid_imsi_map;
+  get_s1ap_ueid_imsi_map(&ueid_imsi_map);
+  ueid_imsi_map.insert(conn_est_cnf_pP->ue_id, imsi64);
 
   pdu.present = S1ap_S1AP_PDU_PR_initiatingMessage;
   pdu.choice.initiatingMessage.procedureCode =

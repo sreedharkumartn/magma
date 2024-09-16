@@ -13,6 +13,7 @@
 #include "lte/gateway/c/core/oai/test/s1ap_task/s1ap_mme_test_utils.h"
 
 #include <cstdlib>
+#include <fstream>
 #include "S1ap_Cause.h"
 
 extern "C" {
@@ -21,10 +22,10 @@ extern "C" {
 #include "lte/gateway/c/core/oai/common/conversions.h"
 #include "lte/gateway/c/core/oai/common/itti_free_defined_msg.h"
 #include "lte/gateway/c/core/oai/include/s1ap_messages_types.h"
-#include "lte/gateway/c/core/oai/tasks/nas/ies/TrackingAreaIdentityList.h"
 #include "lte/gateway/c/core/oai/lib/itti/intertask_interface.h"
 }
 
+#include "lte/gateway/c/core/oai/tasks/nas/ies/TrackingAreaIdentityList.hpp"
 #include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_state_manager.hpp"
 
 namespace magma {

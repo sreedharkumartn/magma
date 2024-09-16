@@ -105,8 +105,8 @@ setup(
         'lxml==4.9.1',
         'ryu>=4.34',
         'spyne>=2.13,<2.14',
-        'scapy==2.4.5',
-        'flask==1.1.4',
+        'dpkt==1.9.8',
+        'flask==2.2.5',
         'sentry_sdk>=1.5.0,<1.9',
         'aiodns>=3.0.0',
         'pymemoize>=1.0.3',
@@ -114,9 +114,9 @@ setup(
         # pin recursive dependencies of ryu and others
         'charset-normalizer==2.0.0',
         'docker==4.1.0',
-        'urllib3==1.26.11',
+        'urllib3==1.26.19',
         'websocket-client>=1.3.2',
-        'requests==2.28.1',
+        'requests==2.31.0',
         'certifi>=2022.6.15',
         'idna==3.3',
         'python-dateutil>=2.8.2',
@@ -133,16 +133,17 @@ setup(
         'ovs==2.16.0',
         'prometheus-client>=0.3.1',
         'aioeventlet @ git+https://github.com/magma/deb-python-aioeventlet@86130360db113430370ed6c64d42aee3b47cd619',
+        'sdnotify>=0.3.2',
     ],
     extras_require={
         'dev': [
             # Should be kept in sync with the version in python.mk
             'grpcio-tools>=1.46.3,<1.49.0',
-            'coverage==6.4.2',
             'iperf3>=0.1.11',
             'parameterized==0.8.1',
             'pytest==7.1.2',
             'pytest-cov==3.0.0',
+            'scapy==2.4.5',
         ],
     },
 )

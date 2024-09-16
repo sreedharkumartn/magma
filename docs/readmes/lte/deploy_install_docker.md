@@ -27,8 +27,8 @@ satisfies the following requirements:
 >   interface to `eth0`.
 >
 > - If you do not want all internet traffic to go through `enp1s0`
->  to separate control plane (Orc8r Http2 traffic) from user plane, you
->  may want to add another interface and configure proper routing.
+>   to separate control plane (Orc8r Http2 traffic) from user plane, you
+>   may want to add another interface and configure proper routing.
 
 ## Deployment
 
@@ -93,7 +93,7 @@ Start your access gateway:
 
 ```bash
 cd /var/opt/magma/docker
-sudo docker-compose up -d
+sudo docker compose --compatibility up -d
 ```
 
 Now get Hardware ID and Challenge key and add AGW in your orc8r:
@@ -105,5 +105,5 @@ docker exec magmad show_gateway_info.py
 Then restart your access gateway:
 
 ```bash
-sudo docker-compose up -d --force-recreate
+sudo docker compose --compatibility up -d --force-recreate
 ```

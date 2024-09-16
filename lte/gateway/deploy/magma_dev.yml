@@ -13,7 +13,7 @@
 ################################################################################
 
 - name: Set up Magma dev build environment on a local machine
-  hosts: focal_dev
+  hosts: dev
   become: yes
 
   vars:
@@ -38,13 +38,14 @@
       vars:
         c_build: /home/{{ ansible_user }}/build/c
         oai_build: "{{ c_build }}/core/oai"
-        go_build: /home/{{ ansible_user }}/go/bin/
+        go_build: /home/{{ ansible_user }}/go/bin
         magma_repo: /home/{{ ansible_user }}/magma-packages
         magma_deps: /home/{{ ansible_user }}/magma-deps
     - role: bazel
     - role: fluent_bit
     - role: pyvenv
     - role: service_aliases
+    - role: bazel_aliases
 
   tasks:
     # Only run installation for docker

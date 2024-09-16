@@ -21,24 +21,26 @@
   \company Eurecom
   \email: lionel.gauthier@eurecom.fr
 */
+
+#include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_mme_itti_messaging.hpp"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 #include "lte/gateway/c/core/common/assertions.h"
 #include "lte/gateway/c/core/oai/common/log.h"
+#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
 #include "lte/gateway/c/core/oai/lib/itti/intertask_interface.h"
 #include "lte/gateway/c/core/oai/lib/itti/intertask_interface_types.h"
-#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
-#include "lte/gateway/c/core/oai/include/mme_app_ue_context.h"
 #ifdef __cplusplus
 }
 #endif
 
-#include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_mme_itti_messaging.hpp"
 #include "S1ap_CauseRadioNetwork.h"
+#include "lte/gateway/c/core/oai/include/mme_app_ue_context.hpp"
 #include "lte/gateway/c/core/oai/include/nas/as_message.h"
 #include "lte/gateway/c/core/oai/include/s1ap_messages_types.h"
-#include "lte/gateway/c/core/oai/include/sctp_messages_types.h"
+#include "lte/gateway/c/core/oai/include/sctp_messages_types.hpp"
 
 namespace magma {
 namespace lte {
@@ -74,8 +76,9 @@ status_code_e s1ap_mme_itti_nas_uplink_ind(const mme_ue_s1ap_id_t ue_id,
   MessageDef* message_p = NULL;
   imsi64_t imsi64 = INVALID_IMSI64;
 
-  s1ap_imsi_map_t* imsi_map = get_s1ap_imsi_map();
-  imsi_map->mme_ueid2imsi_map.get(ue_id, &imsi64);
+  magma::proto_map_uint32_uint64_t ueid_imsi_map;
+  get_s1ap_ueid_imsi_map(&ueid_imsi_map);
+  ueid_imsi_map.get(ue_id, &imsi64);
 
   OAILOG_INFO_UE(
       LOG_S1AP, imsi64,
@@ -117,8 +120,10 @@ status_code_e s1ap_mme_itti_nas_downlink_cnf(const mme_ue_s1ap_id_t ue_id,
     OAILOG_FUNC_RETURN(LOG_S1AP, RETURNok);
   }
 
-  s1ap_imsi_map_t* imsi_map = get_s1ap_imsi_map();
-  imsi_map->mme_ueid2imsi_map.get(ue_id, &imsi64);
+  magma::proto_map_uint32_uint64_t ueid_imsi_map;
+  get_s1ap_ueid_imsi_map(&ueid_imsi_map);
+  ueid_imsi_map.get(ue_id, &imsi64);
+
   message_p = itti_alloc_new_message(TASK_S1AP, MME_APP_DOWNLINK_DATA_CNF);
   if (message_p == NULL) {
     OAILOG_ERROR_UE(LOG_S1AP, imsi64,
@@ -142,7 +147,7 @@ status_code_e s1ap_mme_itti_nas_downlink_cnf(const mme_ue_s1ap_id_t ue_id,
 
 //------------------------------------------------------------------------------
 
-void s1ap_mme_itti_s1ap_initial_ue_message(
+status_code_e s1ap_mme_itti_s1ap_initial_ue_message(
     const sctp_assoc_id_t assoc_id, const uint32_t enb_id,
     const enb_ue_s1ap_id_t enb_ue_s1ap_id, const uint8_t* const nas_msg,
     const size_t nas_msg_length, const tai_t* const tai,
@@ -156,14 +161,20 @@ void s1ap_mme_itti_s1ap_initial_ue_message(
   MessageDef* message_p = NULL;
 
   OAILOG_FUNC_IN(LOG_S1AP);
-  AssertFatal((nas_msg_length < 1000), "Bad length for NAS message %lu",
-              nas_msg_length);
+
+  if (nas_msg_length >= 1000) {
+    OAILOG_ERROR(LOG_S1AP,
+                 "Bad length for NAS message greater then 1000 "
+                 " S1AP_INITIAL_UE_MESSAGE \n");
+    OAILOG_FUNC_RETURN(LOG_S1AP, RETURNerror);
+  }
+
   message_p = itti_alloc_new_message(TASK_S1AP, S1AP_INITIAL_UE_MESSAGE);
   if (message_p == NULL) {
     OAILOG_ERROR(LOG_S1AP,
                  "itti_alloc_new_message Failed for"
                  " S1AP_INITIAL_UE_MESSAGE \n");
-    OAILOG_FUNC_OUT(LOG_S1AP);
+    OAILOG_FUNC_RETURN(LOG_S1AP, RETURNerror);
   }
 
   OAILOG_INFO(LOG_S1AP,
@@ -208,7 +219,7 @@ void s1ap_mme_itti_s1ap_initial_ue_message(
   S1AP_INITIAL_UE_MESSAGE(message_p).transparent.e_utran_cgi = *ecgi;
 
   send_msg_to_task(&s1ap_task_zmq_ctx, TASK_MME_APP, message_p);
-  OAILOG_FUNC_OUT(LOG_S1AP);
+  OAILOG_FUNC_RETURN(LOG_S1AP, RETURNok);
 }
 
 //------------------------------------------------------------------------------

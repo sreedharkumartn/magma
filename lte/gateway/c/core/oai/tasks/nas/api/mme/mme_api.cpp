@@ -39,6 +39,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/random.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,6 +47,7 @@ extern "C" {
 #include "lte/gateway/c/core/common/assertions.h"
 #include "lte/gateway/c/core/common/common_defs.h"
 #include "lte/gateway/c/core/oai/common/common_types.h"
+#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
 #include "lte/gateway/c/core/oai/common/conversions.h"
 #include "lte/gateway/c/core/oai/common/log.h"
 #ifdef __cplusplus
@@ -53,14 +55,13 @@ extern "C" {
 #endif
 
 #include "lte/gateway/c/core/oai/include/mme_app_state.hpp"
-#include "lte/gateway/c/core/oai/include/mme_app_ue_context.h"
-#include "lte/gateway/c/core/oai/include/mme_config.h"
+#include "lte/gateway/c/core/oai/include/mme_app_ue_context.hpp"
+#include "lte/gateway/c/core/oai/include/mme_config.hpp"
 #include "lte/gateway/c/core/oai/lib/3gpp/3gpp_23.003.h"
 #include "lte/gateway/c/core/oai/lib/3gpp/3gpp_36.401.h"
-#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
 #include "lte/gateway/c/core/oai/tasks/nas/emm/EmmCommon.hpp"
 #include "lte/gateway/c/core/oai/tasks/nas/emm/emm_data.hpp"
-#include "lte/gateway/c/core/oai/tasks/nas/ies/EpsNetworkFeatureSupport.h"
+#include "lte/gateway/c/core/oai/tasks/nas/ies/EpsNetworkFeatureSupport.hpp"
 
 /****************************************************************************/
 /*******************  L O C A L    D E F I N I T I O N S  *******************/
@@ -408,6 +409,11 @@ status_code_e mme_api_unsubscribe(bstring apn) {
 }
 
 static tmsi_t generate_random_TMSI() {
-  // note srand with seed is initialized at main
-  return (tmsi_t)rand();
+  tmsi_t tmsi = (tmsi_t)0;
+  if (getrandom(reinterpret_cast<void*>(&tmsi), sizeof(tmsi_t), 0) !=
+      sizeof(tmsi_t)) {
+    tmsi = static_cast<tmsi_t>(
+        rand());  // Fallback in case of fundamental system error
+  }
+  return tmsi;
 }
